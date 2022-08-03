@@ -1,0 +1,198 @@
+## Load packages
+packages <- c("tidyverse", "knitr", "kableExtra",
+              "parameters", "hasseDiagram", "car",
+              "psych", "emmeans", "rstatix")
+lapply(packages, library, character.only = TRUE)
+## Set options and constraint
+options(knitr.kable.NA = "")
+options(contrasts = c("contr.sum", "contr.poly"))
+## Load useful tools
+source("https://raw.github.com/neilhatfield/STAT461/master/rScripts/ANOVATools.R")
+## Load Data
+library(readxl)
+ksøks2021RandomItemFinal <- read_excel("ksøks2021RandomItemFinal.xlsx")
+View(ksøks2021RandomItemFinal)
+
+ksoks2021Data <- ksøks2021RandomItemFinal
+
+Item <- ksoks2021Data$`Item Purchased`
+Sex <- ksoks2021Data$Sex
+Money <- ksoks2021Data$USD
+
+Item <- factor(
+  x = Item,
+  levels = c("Socks", "Top", "Both")
+)
+
+Sex <- as.factor(Sex)
+
+## Hasse Diagram
+
+modelLabels <- c("1 Purchase Items 1", "2 Gender 1", "3 Clothing Purchased 2", "20 (The customer) 17")
+modelMatrix <- matrix(
+  data = c(FALSE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, TRUE, TRUE, TRUE, FALSE),
+  nrow = 4,
+  ncol = 4,
+  byrow = FALSE
+)
+hasseDiagram::hasse(
+  data = modelMatrix,
+  labels = modelLabels
+)
+## Fitting ANOVA 
+
+ksoks2021Model <- aov(
+  formula = Money~Sex+Item,
+  data = ksoks2021Data
+)
+
+## QQ Plot
+car::qqPlot(
+  x = residuals(ksoks2021Model),
+  distribution = "norm",
+  envelope = 0.90,
+  id = FALSE,
+  pch = 20,
+  ylab = "Residuals($USD)"
+)
+
+## Assesing Homoscedasticity
+
+ggplot(
+  data = data.frame(
+    residuals = residuals(ksoks2021Model),
+    fitted = fitted.values(ksoks2021Model)
+  ),
+  mapping = aes(x = fitted, y = residuals)
+) +
+  geom_point(size = 2) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "grey50"
+  ) +
+  geom_smooth(
+    formula = y ~ x,
+    method = stats::loess,
+    method.args = list(degree = 1),
+    se = FALSE,
+    size = 0.5
+  ) +
+  theme_bw() +
+  xlab("Fitted values ($USD)") +
+  ylab("Residuals ($USD)")
+
+##Independence of Observations
+ggplot(
+  data = data.frame(
+    residuals = ksoks2021Model$residuals,
+    index = 1:length(ksoks2021Model$residuals)
+  ),
+  mapping = aes(x = index, y = residuals)
+) +
+  geom_point(size = 1.5) +
+  geom_line() +
+  theme_bw() +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "red"
+  ) +
+  xlab("Measurement order") +
+  ylab("Residuals")
+
+
+## Interaction Plot Money Spent on Item grouped by gender
+
+ggplot2::ggplot(
+  data = ksoks2021Data,
+  mapping = aes(
+    x = Item,
+    y = Money,
+    color = Sex,
+    shape = Sex,
+    linetype = Sex,
+    group = Sex
+  )
+) +
+  stat_summary(fun = "mean", geom = "point") +
+  stat_summary(fun = "mean", geom = "line") +
+  ggplot2::theme_bw() +
+  xlab("Item Purchased") +
+  ylab("Money ($USD)") +
+  labs(color = "Sex") +
+  theme(
+    legend.position = "right"
+  )
+
+## Interaction of Money Spent by Gender, grouped by item
+
+ggplot2::ggplot(
+  data = ksoks2021Data,
+  mapping = aes(
+    x = Sex,
+    y = Money,
+    color = Item,
+    shape = Item,
+    linetype = Item,
+    group = Item
+  )
+) +
+  stat_summary(fun = "mean", geom = "point") +
+  stat_summary(fun = "mean", geom = "line") +
+  ggplot2::theme_bw() +
+  xlab("Gender of Customer") +
+  ylab("$USD") +
+  labs(color = "Item") +
+  theme(
+    legend.position = "right"
+  )
+
+## Anova Table
+
+parameters::model_parameters(
+  model = ksoks2021Model,
+  omega_squared = "partial",
+  eta_squared = "partial",
+  epsilon_squared = "partial"
+) %>%
+  knitr::kable(
+    digits = 4,
+    col.names = c("Source", "SS", "df", "MS", "F", "p-value",
+                  "Partial Omega Sq.", "Partial Eta Sq.", "Partial Epsilon Sq."),
+    caption = "ANOVA Table for ksøks customers Male vs Female",
+    align = c('l',rep('c',8)),
+    booktab = TRUE
+  ) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "condensed"),
+    font_size = 10,
+    latex_options = c("scale_down", "HOLD_position")
+  )
+
+## Block Effciency
+
+block.RelEff(
+  aov.obj = ksoks2021Model,
+  blockName = "Sex",
+  trtName = "Item"
+)
+
+## Money Spent on Item, Blocked by sex, grouped by Item
+ggplot(
+  data = ksoks2021Data,
+  mapping = aes(
+    x = Item,
+    y = Money,
+    color = Item,
+    shape = Sex,
+    linetype = Item
+  )
+) +
+  geom_point(size = 3) +
+  geom_path(
+    mapping = aes(group = Item)
+  ) +
+  ggplot2::theme_bw() +
+  xlab("Items Purchased") +
+  ylab("($USD)")
